@@ -1,6 +1,7 @@
 use anyhow::Result;
 use log::{info, Level, LevelFilter};
 use plonky2::hash::hashing::{SPONGE_WIDTH, PlonkyPermutation, SPONGE_RATE};
+use plonky2_field::goldilocks_field::GoldilocksField;
 use std::time::Instant;
 
 use plonky2_field::types::Field;
@@ -11,7 +12,7 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::{
     CircuitConfig, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData,
 };
-use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, PoseidonGoldilocksConfig, Hasher, GenericHashOut};
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::plonk::prover::prove;
 use plonky2::util::timing::TimingTree;
@@ -31,13 +32,7 @@ fn hash_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D:
     elements: &[F]
 ) -> Result<ProofTuple<F, C, D>> {
     let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-    //let mut field_elements = field_bytes.clone();
-    //fake_bytes[0] += F::ONE;
-    //let fake_hash_result = PoseidonHash::hash_no_pad(&fake_bytes); // hash_x = hash(x)
     
-    println!("Init state: {:?}", init_state);
-    println!("Result state: {:?}", result_state);
-
     let hash_input_targets = builder.add_virtual_targets(elements.len());
     let init_state_target = builder.add_virtual_target_arr::<SPONGE_WIDTH>();
     let result_state_target = builder.permute_many::<PoseidonHash>(init_state_target, hash_input_targets.clone());
@@ -179,9 +174,23 @@ where
     Ok((proof, data.verifier_only, data.common))
 }
 
-const HASH_INPUT_SIZE: usize = 1024 * 1024 * 4;
+pub fn calculate_poseidon(data: &[u8]) -> Vec<u8> {
+    PoseidonHash::hash_pad(&bytes_to_goldilocks(data)).to_bytes()
+}
 
-fn main() {
+fn bytes_to_goldilocks(bytes: &[u8]) -> Vec::<GoldilocksField> {
+    let mut field_elements = Vec::new();
+    for chunk in bytes.chunks(4) {
+        let mut elem_bytes = [0u8; 8];
+        elem_bytes[..4].copy_from_slice(chunk);
+        field_elements.push(GoldilocksField::from_canonical_u64(u64::from_be_bytes(elem_bytes)));
+    }
+    field_elements
+}
+
+const L: usize = 12 * 85 * 256;
+
+pub fn try_hashing (bytes: &[u8]) {
     let config = CircuitConfig::standard_recursion_config();
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
@@ -192,32 +201,36 @@ fn main() {
     builder.filter_level(LevelFilter::Info);
     //builder.filter_level(LevelFilter::Debug);
     //builder.filter_level(LevelFilter::Trace);
-    builder.try_init().unwrap();
+    builder.try_init();
 
 
     let start = Instant::now();
 
     let mut inners = Vec::new();
 
-    let blocks = 4;
-    let bytes = vec![1u8; HASH_INPUT_SIZE * blocks];
+    let field_elements = bytes_to_goldilocks(bytes);
+    println!("Going to proof the hash of {} bytes. {} kB",  field_elements.len() * 4, field_elements.len() * 4 / 1024);
 
-    let mut field_elements = Vec::<F>::new();
-    for chunk in bytes.chunks(8) {
-        let mut elem_bytes = [0u8; 8];
-        elem_bytes.copy_from_slice(chunk);
-        field_elements.push(F::from_canonical_u64(u64::from_be_bytes(elem_bytes)));
-    }
-    println!("Going to proof the hash of {} bytes. {} kB", blocks * HASH_INPUT_SIZE, blocks * HASH_INPUT_SIZE / 1024);
-
-    let true_hash = PoseidonHash::hash_no_pad(&field_elements).elements;
-    println!("True hash is {:?}", true_hash);
+    let true_hash = PoseidonHash::hash_pad(&field_elements);
+    println!("True hash is {:?}", true_hash.to_bytes());
+    println!("True hash in goldilocks is {:?}", true_hash.elements);
 
     let mut states = Vec::new();
     let mut state = [F::ZERO; SPONGE_WIDTH];
     states.push(state);
-    for bytes_chunk in field_elements.chunks(HASH_INPUT_SIZE >> 3) {
-        for input_chunk in bytes_chunk.chunks(SPONGE_RATE) {
+    for (i, chunk) in field_elements.chunks(L).enumerate() {
+        let mut padded_chunk = chunk.to_vec();
+
+        // Apply padding for the last chunk
+        if i == field_elements.len() / L {
+            padded_chunk.push(F::ONE);
+            while (padded_chunk.len() + 1) % SPONGE_WIDTH != 0 {
+                padded_chunk.push(F::ZERO);
+            }
+            padded_chunk.push(F::ONE);
+        }
+
+        for input_chunk in padded_chunk.chunks(SPONGE_RATE) {
             state[..input_chunk.len()].copy_from_slice(input_chunk);
             state = PoseidonPermutation::permute(state);
         }
@@ -228,7 +241,7 @@ fn main() {
             &config,
             init_state,
             state.clone(),
-            &bytes_chunk
+            &padded_chunk
         ).unwrap();
 
         let (_, _, cd) = &inner;
@@ -251,7 +264,7 @@ fn main() {
         cd.degree_bits()
     );
 
-    assert_eq!(middle_proof.public_inputs, true_hash);
+    assert_eq!(middle_proof.public_inputs, true_hash.elements);
 
     // Add a second layer of recursion to shrink the proof size further
     let outer = general_recursive_proof::<F, C, C, D>(&[middle], &config, None).unwrap();
