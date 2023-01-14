@@ -1,177 +1,54 @@
-use std::slice::Chunks;
-
-use anyhow::Result;
 use plonky2::hash::hashing::{PlonkyPermutation, SPONGE_RATE, SPONGE_WIDTH};
 use plonky2::iop::target::Target;
-use plonky2_field::goldilocks_field::GoldilocksField;
 
-use plonky2::gates::noop::NoopGate;
 use plonky2::hash::hash_types::RichField;
 use plonky2::hash::poseidon::{PoseidonHash, PoseidonPermutation};
-use plonky2::iop::witness::{PartialWitness, WitnessWrite};
+use plonky2::iop::witness::PartialWitness;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::{
-    CircuitConfig, CommonCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData,
-};
-use plonky2::plonk::config::{
-    AlgebraicHasher, GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig,
-};
-use plonky2::plonk::proof::ProofWithPublicInputs;
-use plonky2::plonk::prover::prove;
-use plonky2::util::timing::TimingTree;
 use plonky2_field::extension::Extendable;
 
 use crate::util::set_multiple_targets;
 
-type ProofTuple<F, C, const D: usize> = (
-    ProofWithPublicInputs<F, C, D>,
-    VerifierOnlyCircuitData<C, D>,
-    CommonCircuitData<F, D>,
-);
-
-/*
-fn hashes_aggregate_proof<
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    InnerC: GenericConfig<D, F = F>,
-    const D: usize,
->(
-    inners: &[ProofTuple<F, InnerC, D>],
-    config: &CircuitConfig,
-    min_degree_bits: Option<usize>,
-) -> Result<ProofTuple<F, C, D>>
-where
-    InnerC::Hasher: AlgebraicHasher<F>,
-{
-    let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-    let mut pw = PartialWitness::new();
-
-    let mut last_result_state_target = builder.constants(&[F::ZERO; SPONGE_WIDTH]);
-
-    for inner in inners {
-        let (inner_proof, inner_vd, inner_cd) = inner;
-        let pt = builder.add_virtual_proof_with_pis::<InnerC>(inner_cd);
-
-        let init_state_target = &pt.public_inputs[..SPONGE_WIDTH];
-        for (left, right) in last_result_state_target.iter().zip(init_state_target.iter()) {
-            builder.connect(*left, *right);
-        }
-        last_result_state_target.copy_from_slice(&pt.public_inputs[SPONGE_WIDTH..]);
-
-        let inner_data = VerifierCircuitTarget {
-            constants_sigmas_cap: builder.add_virtual_cap(inner_cd.config.fri_config.cap_height),
-            circuit_digest: builder.add_virtual_hash(),
-        };
-
-        builder.verify_proof::<InnerC>(&pt, &inner_data, inner_cd);
-
-        pw.set_proof_with_pis_target(&pt, inner_proof);
-        pw.set_verifier_data_target(&inner_data, inner_vd);
-    }
-    builder.register_public_inputs(&last_result_state_target[..4]);
-    builder.print_gate_counts(0);
-
-    if let Some(min_degree_bits) = min_degree_bits {
-        let min_gates = (1 << (min_degree_bits - 1)) + 1;
-        for _ in builder.num_gates()..min_gates {
-            builder.add_gate(NoopGate, vec![]);
-        }
-    }
-
-    let data = builder.build::<C>();
-
-    let proof = prove(&data.prover_only, &data.common, pw)?;
-    println!("{:?}", proof.public_inputs);
-
-    data.verify(proof.clone())?;
-
-    Ok((proof, data.verifier_only, data.common))
+pub struct ChunkHashTargets {
+    init_state: [Target; SPONGE_WIDTH],
+    final_state: [Target; SPONGE_WIDTH],
+    pub input: Vec<Target>,
+    pub padding_len: usize,
 }
 
-fn general_recursive_proof<
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    InnerC: GenericConfig<D, F = F>,
-    const D: usize,
->(
-    inners: &[ProofTuple<F, InnerC, D>],
-    config: &CircuitConfig,
-    min_degree_bits: Option<usize>,
-) -> Result<ProofTuple<F, C, D>>
-where
-    InnerC::Hasher: AlgebraicHasher<F>,
-{
-    let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-    let mut pw = PartialWitness::new();
-    for inner in inners {
-        let (inner_proof, inner_vd, inner_cd) = inner;
-        let pt = builder.add_virtual_proof_with_pis::<InnerC>(inner_cd);
+pub fn build_hash_chunk_circuit<F: RichField + Extendable<D>, const D: usize, const L: usize>(
+    builder: &mut CircuitBuilder<F, D>,
+    chunk_len: usize,
+) -> ChunkHashTargets {
+    let (input_len, padding_len) = if chunk_len < L {
+        (chunk_len, get_padding_length(chunk_len))
+    } else {
+        (L, 0)
+    };
 
-        let inner_data = VerifierCircuitTarget {
-            constants_sigmas_cap: builder.add_virtual_cap(inner_cd.config.fri_config.cap_height),
-            circuit_digest: builder.add_virtual_hash(),
-        };
+    let input_targets = builder.add_virtual_targets(input_len + padding_len);
+    let init_state_targets = builder.add_virtual_target_arr::<SPONGE_WIDTH>();
+    let final_state_targets =
+        builder.permute_many::<PoseidonHash>(init_state_targets, &input_targets);
 
-        builder.verify_proof::<InnerC>(&pt, &inner_data, inner_cd);
+    builder.register_public_inputs(&init_state_targets);
+    builder.register_public_inputs(&final_state_targets);
 
-        pw.set_proof_with_pis_target(&pt, inner_proof);
-        pw.set_verifier_data_target(&inner_data, inner_vd);
+    ChunkHashTargets {
+        init_state: init_state_targets,
+        final_state: final_state_targets,
+        input: input_targets,
+        padding_len: padding_len,
     }
-    builder.print_gate_counts(0);
-
-    if let Some(min_degree_bits) = min_degree_bits {
-        let min_gates = (1 << (min_degree_bits - 1)) + 1;
-        for _ in builder.num_gates()..min_gates {
-            builder.add_gate(NoopGate, vec![]);
-        }
-    }
-
-    let data = builder.build::<C>();
-
-    let mut timing = TimingTree::new("prove", Level::Debug);
-    let proof = prove(&data.prover_only, &data.common, pw, &mut timing)?;
-    timing.print();
-    println!("{:?}", proof.public_inputs);
-
-    data.verify(proof.clone())?;
-
-    Ok((proof, data.verifier_only, data.common))
 }
-*/
 
-/*
-pub fn try_hashing (bytes: &[u8]) {
-    let config = CircuitConfig::standard_recursion_config();
-    const D: usize = 2;
-    type C = PoseidonGoldilocksConfig;
-    type F = <C as GenericConfig<D>>::F;
-
-    // Recursively verify the proof
-    let middle = hashes_aggregate_proof::<F, C, C, D>(&inners, &config, None).unwrap();
-    let (middle_proof, _, cd) = &middle;
-    info!(
-        "Single recursion proof degree {} = 2^{}",
-        cd.degree(),
-        cd.degree_bits()
-    );
-
-    assert_eq!(middle_proof.public_inputs, true_hash);
-
-    // Add a second layer of recursion to shrink the proof size further
-    let outer = general_recursive_proof::<F, C, C, D>(&[middle], &config, None).unwrap();
-    let (proof, vd, cd) = &outer;
-    info!(
-        "Double recursion proof degree {} = 2^{}",
-        cd.degree(),
-        cd.degree_bits()
-    );
-
+fn get_padding_length(len: usize) -> usize {
+    let padded_length = len + 2;
+    ((padded_length + SPONGE_WIDTH - 1) / SPONGE_WIDTH) * SPONGE_WIDTH - len
 }
-*/
 
 pub struct ChunkHasher<F: RichField + Extendable<D>, const D: usize, const L: usize> {
     data: Vec<F>,
-    true_hash: [F; 4],
     states: Vec<[F; SPONGE_WIDTH]>,
     current_chunk: usize,
     total_chunks: usize,
@@ -179,16 +56,12 @@ pub struct ChunkHasher<F: RichField + Extendable<D>, const D: usize, const L: us
 
 impl<'a, F: RichField + Extendable<D>, const D: usize, const L: usize> ChunkHasher<F, D, L> {
     pub fn new(data: &[F]) -> Self {
-        let true_hash = PoseidonHash::hash_pad(&data).elements;
-        println!("True hash in goldilocks is {:?}", true_hash);
-
         let mut states = Vec::new();
         let initial_state = [F::ZERO; SPONGE_WIDTH];
         states.push(initial_state);
 
         Self {
             data: data.to_vec(),
-            true_hash: true_hash,
             states: states,
             current_chunk: 0,
             total_chunks: (data.len() + L - 1) / L,
@@ -241,28 +114,17 @@ impl<'a, F: RichField + Extendable<D>, const D: usize, const L: usize> ChunkHash
         (initial_state, chunk, state)
     }
 
-    pub fn generate_next_chunk_contribution(
+    pub fn populate_chunk_inputs(
         &mut self,
-        builder: &mut CircuitBuilder<F, D>,
+        targets: &ChunkHashTargets,
         inputs: &mut PartialWitness<F>,
-    ) -> Vec<Target> {
-        let (initial_state, chunk, result_state) = self.prepare_chunk_prove_data();
+    ) {
+        let (initial_state, chunk, final_state) = self.prepare_chunk_prove_data();
         self.current_chunk += 1;
-        self.states.push(result_state);
+        self.states.push(final_state);
 
-        let hash_input_targets = builder.add_virtual_targets(chunk.len());
-        let init_state_targets = builder.add_virtual_target_arr::<SPONGE_WIDTH>();
-        let result_state_targets =
-            builder.permute_many::<PoseidonHash>(init_state_targets, hash_input_targets.clone());
-
-        builder.register_public_inputs(&init_state_targets);
-        builder.register_public_inputs(&result_state_targets);
-        builder.print_gate_counts(0);
-
-        set_multiple_targets(inputs, &init_state_targets, &initial_state);
-        set_multiple_targets(inputs, &hash_input_targets, &chunk);
-        set_multiple_targets(inputs, &result_state_targets, &result_state);
-
-        hash_input_targets
+        set_multiple_targets(inputs, &targets.init_state, &initial_state);
+        set_multiple_targets(inputs, &targets.input, &chunk);
+        set_multiple_targets(inputs, &targets.final_state, &final_state);
     }
 }

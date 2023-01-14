@@ -2,4 +2,5 @@
 members = [
     "zkedit",
     "zkp",
+    "transformations"
 ]
