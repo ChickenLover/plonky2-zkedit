@@ -35,4 +35,4 @@ cargo run --release -- verify -e <edited-image-path> -m <metadata-path>
 ### Contacts
 Feel free to reach out if you have any questions or want to contribute.
 
- - [Twitter](https://twitter.com/roman_palkin)
+ - [Twitter](https://twitter.com/chicken_2007)
