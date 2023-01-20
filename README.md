@@ -18,7 +18,7 @@ The benchmark of proving the Crop operation for various-sized images can be seen
 | Prover time, seconds   |    3    |    16   |    37    |     54    |
 | Verifier time, seconds |   <0.1  |   <0.1  |   <0.1   |    <0.2   |
 | RAM consumption        | ~480 MB | ~5.1 GB |  ~6.2 GB |  ~9.3 GB  |
-| Prove size             |  130 KB |  132 KB |  133 КB  |   135 KB  |
+| Proof size             |  130 KB |  132 KB |  133 КB  |   135 KB  |
 
 ### Proving
 ```bash
