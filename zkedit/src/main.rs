@@ -1,11 +1,11 @@
-pub mod metadata;
 pub mod cli;
+pub mod metadata;
 
 use std::fs;
 use std::time::Instant;
 
 use anyhow::Result;
-use cli::{Zkedit, parse_options};
+use cli::{parse_options, Zkedit};
 use image::imageops::crop;
 use image::ImageBuffer;
 use log::LevelFilter;
@@ -18,7 +18,6 @@ use zkedit_zkp::builder::TransformationCircuitBuilder;
 use zkedit_zkp::util::calculate_poseidon;
 
 use crate::metadata::ProofMetadata;
-
 
 fn pixels_to_bytes(pixels: Pixels<Rgba<u8>>) -> Vec<u8> {
     let mut pixel_bytes = vec![];
@@ -54,10 +53,14 @@ fn align_crop_edit(
 
 const L: usize = 12 * 85 * 256;
 
-fn prove_crop(orig_img_path: String, crop_x: u32, crop_y: u32, crop_w: u32, crop_h: u32 ) -> Result<()> {
-    let mut img = ImageReader::open(orig_img_path)?
-        .decode()?
-        .into_rgba8();
+fn prove_crop(
+    orig_img_path: String,
+    crop_x: u32,
+    crop_y: u32,
+    crop_w: u32,
+    crop_h: u32,
+) -> Result<()> {
+    let mut img = ImageReader::open(orig_img_path)?.decode()?.into_rgba8();
     let pixels = img.pixels();
     let width = img.width();
     let height = img.height();
@@ -74,15 +77,8 @@ fn prove_crop(orig_img_path: String, crop_x: u32, crop_y: u32, crop_w: u32, crop
 
     let pixel_bytes = pixels_to_bytes(pixels);
     let pixels_hash = calculate_poseidon(&pixel_bytes);
-    
-    let crop_img = crop(
-        &mut img,
-        crop_x,
-        crop_y,
-        crop_w,
-        crop_h,
-    )
-    .to_image();
+
+    let crop_img = crop(&mut img, crop_x, crop_y, crop_w, crop_h).to_image();
 
     println!(
         "Crop image {}x{} pixels",
@@ -95,17 +91,10 @@ fn prove_crop(orig_img_path: String, crop_x: u32, crop_y: u32, crop_w: u32, crop
 
     crop_img.save("img_crop.png");
 
-    let alidned_crop_bytes = align_crop_edit(
-        crop_img,
-        width,
-        height,
-        crop_x,
-        crop_y,
-        crop_w,
-        crop_h,
-    );
+    let alidned_crop_bytes =
+        align_crop_edit(crop_img, width, height, crop_x, crop_y, crop_w, crop_h);
 
-    let crop_transformation = Transformation::Crop{
+    let crop_transformation = Transformation::Crop {
         orig_w: width,
         orig_h: height,
         x: crop_x,
@@ -116,8 +105,10 @@ fn prove_crop(orig_img_path: String, crop_x: u32, crop_y: u32, crop_w: u32, crop
 
     println!("Building curcuit");
     let start = Instant::now();
-    let builder =
-        TransformationCircuitBuilder::<L>::new(pixel_bytes.len(), Box::new(crop_transformation.clone()));
+    let builder = TransformationCircuitBuilder::<L>::new(
+        pixel_bytes.len(),
+        Box::new(crop_transformation.clone()),
+    );
     let mut circuit = builder.build_curcuit();
     let duration = start.elapsed();
     println!("Built curcuit in {:?}s", duration);
@@ -137,36 +128,45 @@ fn prove_crop(orig_img_path: String, crop_x: u32, crop_y: u32, crop_w: u32, crop
         proof,
         original_length: pixel_bytes.len(),
         edited_length: alidned_crop_bytes.len(),
-        transformation: crop_transformation
+        transformation: crop_transformation,
     };
 
-    
     fs::write("metadata.json", rmp_serde::to_vec(&metadata)?).expect("Unable to write file");
     Ok(())
 }
 
 fn verify(edited_image_path: String, metadata_path: String) -> Result<()> {
     let metadata: ProofMetadata = rmp_serde::from_slice(&fs::read(metadata_path)?)?;
-    println!("Original length: {}, edited length: {}", metadata.original_length, metadata.edited_length);
+    println!(
+        "Original length: {}, edited length: {}",
+        metadata.original_length, metadata.edited_length
+    );
     let original_hash = metadata.proof.original_hash();
     let edited_hash = metadata.proof.edited_hash();
-    
-    let mut img = ImageReader::open(edited_image_path)?
-        .decode()?
-        .into_rgba8();
+
+    let mut img = ImageReader::open(edited_image_path)?.decode()?.into_rgba8();
 
     match metadata.transformation {
-        Transformation::Crop { orig_w, x, y, w, h, orig_h } => {
+        Transformation::Crop {
+            orig_w,
+            x,
+            y,
+            w,
+            h,
+            orig_h,
+        } => {
             let pixel_bytes = align_crop_edit(img, orig_w, orig_h, x, y, w, h);
             let pixels_hash = calculate_poseidon(&pixel_bytes);
             assert_eq!(edited_hash, pixels_hash);
-        },
+        }
     }
 
     println!("Building curcuit");
     let start = Instant::now();
-    let builder =
-        TransformationCircuitBuilder::<L>::new(metadata.original_length, Box::new(metadata.transformation));
+    let builder = TransformationCircuitBuilder::<L>::new(
+        metadata.original_length,
+        Box::new(metadata.transformation),
+    );
     let circuit = builder.build_curcuit();
     println!("Built curcuit in {:?}s", start.elapsed());
 
@@ -190,12 +190,16 @@ fn main() -> Result<()> {
     builder.try_init()?;
 
     match options {
-        Zkedit::Prove { orig_img_path, crop_x, crop_y, crop_w, crop_h } => {
-            prove_crop(orig_img_path, crop_x, crop_y, crop_w, crop_h)
-        },
-        Zkedit::Verify { edited_image_path, metadata_path } => {
-            verify(edited_image_path, metadata_path)
-        },
+        Zkedit::Prove {
+            orig_img_path,
+            crop_x,
+            crop_y,
+            crop_w,
+            crop_h,
+        } => prove_crop(orig_img_path, crop_x, crop_y, crop_w, crop_h),
+        Zkedit::Verify {
+            edited_image_path,
+            metadata_path,
+        } => verify(edited_image_path, metadata_path),
     }
-
 }

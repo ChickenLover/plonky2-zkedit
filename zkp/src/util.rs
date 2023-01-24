@@ -4,7 +4,8 @@ use plonky2::{
         target::Target,
         witness::{PartialWitness, WitnessWrite},
     },
-    plonk::config::{GenericHashOut, Hasher}, util::serialization::Write,
+    plonk::config::{GenericHashOut, Hasher},
+    util::serialization::Write,
 };
 use plonky2_field::{
     goldilocks_field::GoldilocksField,
@@ -40,7 +41,6 @@ pub(crate) fn field64_to_bytes<F: PrimeField64>(field_elements: &[F]) -> Vec<u8>
     bytes
 }
 
-
 pub fn calculate_poseidon(data: &[u8]) -> Vec<u8> {
     PoseidonHash::hash_pad(&bytes_to_field64::<GoldilocksField>(data)).to_bytes()
 }
@@ -52,6 +52,9 @@ mod tests {
     #[test]
     fn test_serialization() {
         let data: Vec<u8> = (u8::MIN..=u8::MAX).collect();
-        assert_eq!(data, field64_to_bytes::<GoldilocksField>(&bytes_to_field64::<GoldilocksField>(&data)));
+        assert_eq!(
+            data,
+            field64_to_bytes::<GoldilocksField>(&bytes_to_field64::<GoldilocksField>(&data))
+        );
     }
 }

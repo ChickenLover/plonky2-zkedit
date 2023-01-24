@@ -1,12 +1,13 @@
 use plonky2::{
-    hash::hashing::{SPONGE_WIDTH, SPONGE_CAPACITY},
+    hash::hashing::{SPONGE_CAPACITY, SPONGE_WIDTH},
     plonk::{
-        circuit_data::{CommonCircuitData, CircuitData},
+        circuit_data::{CircuitData, CommonCircuitData},
         proof::{CompressedProofWithPublicInputs, ProofWithPublicInputs},
-    }, util::serialization::Write,
+    },
+    util::serialization::Write,
 };
 use plonky2_field::types::Field;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{C, D, F};
 use anyhow::Result;
@@ -35,7 +36,6 @@ impl ChunkProof {
     }
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct TransformationProof {
     pub(crate) proof: CompressedProofWithPublicInputs<F, C, D>,
@@ -44,13 +44,17 @@ pub struct TransformationProof {
 impl TransformationProof {
     pub fn original_hash(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.write_field_vec(&self.proof.public_inputs[..SPONGE_CAPACITY]).unwrap();
+        bytes
+            .write_field_vec(&self.proof.public_inputs[..SPONGE_CAPACITY])
+            .unwrap();
         bytes
     }
 
     pub fn edited_hash(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.write_field_vec(&self.proof.public_inputs[SPONGE_CAPACITY..SPONGE_CAPACITY*2]).unwrap();
+        bytes
+            .write_field_vec(&self.proof.public_inputs[SPONGE_CAPACITY..SPONGE_CAPACITY * 2])
+            .unwrap();
         bytes
     }
 

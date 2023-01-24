@@ -441,6 +441,7 @@ dependencies = [
 [[package]]
 name = "maybe_rayon"
 version = "0.1.0"
+source = "git+https://github.com/ChickenLover/plonky2#507cbcf340bc373488e25aaea07c0dfd9a6e5439"
 dependencies = [
  "rayon",
 ]
@@ -601,6 +602,7 @@ dependencies = [
 [[package]]
 name = "plonky2"
 version = "0.1.0"
+source = "git+https://github.com/ChickenLover/plonky2#507cbcf340bc373488e25aaea07c0dfd9a6e5439"
 dependencies = [
  "ahash",
  "anyhow",
@@ -622,6 +624,7 @@ dependencies = [
 [[package]]
 name = "plonky2_field"
 version = "0.1.0"
+source = "git+https://github.com/ChickenLover/plonky2#507cbcf340bc373488e25aaea07c0dfd9a6e5439"
 dependencies = [
  "anyhow",
  "itertools",
@@ -636,6 +639,7 @@ dependencies = [
 [[package]]
 name = "plonky2_u32"
 version = "0.1.0"
+source = "git+https://github.com/ChickenLover/plonky2#507cbcf340bc373488e25aaea07c0dfd9a6e5439"
 dependencies = [
  "anyhow",
  "itertools",
@@ -646,6 +650,7 @@ dependencies = [
 [[package]]
 name = "plonky2_util"
 version = "0.1.0"
+source = "git+https://github.com/ChickenLover/plonky2#507cbcf340bc373488e25aaea07c0dfd9a6e5439"
 
 [[package]]
 name = "png"

@@ -1,11 +1,14 @@
 use structopt::StructOpt;
 
 #[derive(Clone, StructOpt, Debug)]
-#[structopt(name = "zkedit_options", about = "the prover and the verifier for image transformations")]
+#[structopt(
+    name = "zkedit_options",
+    about = "the prover and the verifier for image transformations"
+)]
 pub enum Zkedit {
     Prove {
         /// A path to original img file
-        #[structopt(short = "i",)]
+        #[structopt(short = "i")]
         orig_img_path: String,
 
         /// X coordinate of crop upper left pixel
@@ -32,8 +35,8 @@ pub enum Zkedit {
 
         /// A path to the metadata file
         #[structopt(short = "m")]
-        metadata_path: String
-    }
+        metadata_path: String,
+    },
 }
 
 pub fn parse_options() -> Result<Zkedit, structopt::clap::Error> {

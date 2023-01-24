@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use zkedit_transformations::Transformation;
-use zkedit_zkp::{proof::TransformationProof};
+use zkedit_zkp::proof::TransformationProof;
 
 #[derive(Serialize, Deserialize)]
 pub struct ProofMetadata {

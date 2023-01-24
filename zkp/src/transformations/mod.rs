@@ -7,7 +7,6 @@ use self::crop::build_crop_circuit;
 pub mod crop;
 pub mod util;
 
-
 pub trait TransformationLogic<const L: usize> {
     fn build_chunk_circuit(
         &self,
@@ -27,9 +26,26 @@ impl<const L: usize> TransformationLogic<L> for Transformation {
         chunk_number: usize,
     ) {
         match self {
-            Transformation::Crop { orig_w, x, y, w, h, orig_h: _ } => {
-                build_crop_circuit::<L>(builder, original_chunk, edited_chunk, chunk_number, *orig_w, *x, *y, *w, *h);
-            },
+            Transformation::Crop {
+                orig_w,
+                x,
+                y,
+                w,
+                h,
+                orig_h: _,
+            } => {
+                build_crop_circuit::<L>(
+                    builder,
+                    original_chunk,
+                    edited_chunk,
+                    chunk_number,
+                    *orig_w,
+                    *x,
+                    *y,
+                    *w,
+                    *h,
+                );
+            }
         }
     }
 }
