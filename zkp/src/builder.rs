@@ -5,7 +5,7 @@ use plonky2_field::types::Field;
 use crate::circuit::{TransformationChunkCircuit, TransformationCircuit};
 use crate::proof::ChunkProof;
 use crate::{hash::build_hash_chunk_circuit, transformations::TransformationLogic};
-use crate::{C, D, F};
+use crate::{C, D, F, PEAK_ALLOC};
 
 pub struct TransformationCircuitBuilder<const L: usize> {
     transformation: Box<dyn TransformationLogic<L>>,
@@ -55,6 +55,9 @@ impl<const L: usize> TransformationCircuitBuilder<L> {
     }
 
     pub fn build_curcuit(&self) -> TransformationCircuit<L> {
+        println!("Starting building the circuit");
+        let start_mem = PEAK_ALLOC.current_usage_as_mb();
+
         let config = CircuitConfig::standard_recursion_config();
         let mut chunk_circuits = Vec::new();
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
@@ -105,6 +108,8 @@ impl<const L: usize> TransformationCircuitBuilder<L> {
             chunk_circuits.push(chunk_circuit);
             pts.push(pt);
             ids.push(inner_data);
+            let cur_mem = PEAK_ALLOC.current_usage_as_mb() - start_mem;
+            println!("Built chunk circuit, mem usage is now {}mb", cur_mem);
         }
 
         builder.register_public_inputs(&last_original_final_state_target[..4]);
@@ -113,6 +118,8 @@ impl<const L: usize> TransformationCircuitBuilder<L> {
 
         let circuit = builder.build::<C>();
 
+        let cur_mem = PEAK_ALLOC.current_usage_as_mb() - start_mem;
+        println!("Built circuit, mem usage is now {}mb", cur_mem);
         TransformationCircuit {
             circuit,
             chunk_circuits,

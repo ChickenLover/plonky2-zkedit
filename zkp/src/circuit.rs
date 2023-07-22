@@ -17,7 +17,7 @@ use crate::{
     hash::{ChunkHashTargets, ChunkHasher},
     proof::{ChunkProof, TransformationProof},
     util::bytes_to_field64,
-    C, D, F,
+    C, D, F, PEAK_ALLOC,
 };
 
 pub(crate) struct TransformationChunkCircuit {
@@ -59,6 +59,7 @@ impl<const L: usize> TransformationCircuit<L> {
     }
 
     pub fn prove(&mut self, original: &[u8], edited: &[u8]) -> Result<TransformationProof> {
+        let start_mem = PEAK_ALLOC.current_usage_as_mb();
         let original_elements = bytes_to_field64::<F>(original);
         let edited_elements = bytes_to_field64::<F>(edited);
 
@@ -79,6 +80,8 @@ impl<const L: usize> TransformationCircuit<L> {
                 self.prove_chunk(&mut orig_hasher, &mut edit_hasher, chunk_circuit)?;
             pw.set_proof_with_pis_target(&pt, &chunk_proof.proof);
             pw.set_verifier_data_target(&inner_data, &chunk_circuit.circuit.verifier_only);
+            let cur_mem = PEAK_ALLOC.current_usage_as_mb() - start_mem;
+            println!("Proved chunk. Memory allocation is now at {}mb", cur_mem);
         }
 
         let mut timing = TimingTree::new("prove", Level::Debug);
@@ -92,6 +95,8 @@ impl<const L: usize> TransformationCircuit<L> {
 
         let duration = start.elapsed();
         println!("Total time for prove is: {:?}", duration);
+        let cur_mem = PEAK_ALLOC.current_usage_as_mb() - start_mem;
+        println!("Total memory allocated is {}mb", cur_mem);
 
         Ok(TransformationProof {
             proof: proof.compress(

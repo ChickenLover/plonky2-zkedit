@@ -18,6 +18,8 @@ plonky2_u32 = { git = "https://github.com/ChickenLover/plonky2" }
 
 zkedit-transformations = { path = "../transformations" }
 
+peak_alloc = "0.1.0"
+
 itertools = "0.10.5"
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0.40"

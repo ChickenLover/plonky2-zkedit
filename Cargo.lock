@@ -580,6 +580,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d01a5bd0424d00070b0098dd17ebca6f961a959dead1dbcbbbc1d1cd8d3deeba"
 
 [[package]]
+name = "peak_alloc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ae5ca2a4f36e9bba393e6711350dde5d11f5aacca3660fcca7877fe6b6e9d98"
+
+[[package]]
 name = "pin-project"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1127,6 +1133,7 @@ dependencies = [
  "env_logger",
  "itertools",
  "log",
+ "peak_alloc",
  "plonky2",
  "plonky2_field",
  "plonky2_u32",
